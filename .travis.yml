@@ -28,6 +28,7 @@ deploy:
   skip_cleanup: true
   api_key: 
     secure: FQku6aptKbMz+Chasi/LyhBtDo0TpUnMHRo/94FxYgOIq7iQ0GnUCyMmVSGvBYwHsA8j1zYZpIm/Nuvmljy6PjOTpHVd5ZImMw2jFr2M3QO7bkUjeimQPk8hGKGiAdJPuzz/ScbL1oJSfdz9PtZMxbIo216rfSL+fNCtFoO0ynMKBHB4T0quJH5ECu50CSPE+GcHyN90+hu2keWdtfWRm7IZea45/90L/v1TJi/P7/niyN7NIuH3bazuxB+2yxDb26CDUWRdlvxvi2HKgRNxhpyvfTIAxh69KhX9qA0DjF+fXb7Q20IGRjPAdQQ8G8MD/al/LCbXOXWbFp5FM05IU3ZUJgk94g3oW0g4VREVPSaCUaYO85LhfD4uiO2d2yd1i0P+elrGJqMlvUQSXPi8CNc1oD9zd4VgJBuyci+oCryJYOt8AW/AsTxC3GhsoZGx/WYSaErlnV04Dvz5UDpcu0FJWm13ZyKcnrw4GcOEZAIZDwtdaM6OTo7k9ywhdF/P2ZbDct9WlcrOYCK2jJ4P50phP04uhEA9SCdfcWIFwuRxdSLVRH2/t5og7yJqaIn0+z3liY3UiL6firqqLfB2i6X1SSgvdnWWZxykeqFFbREgj7sNwrWxWf4KdNtNuqOtgKzt4Kc6ksEcQNmaZpMnxGc3jvOIS9n1JuCB6KoElJ4=
+  file: package/*
   file_glob: true
   on:
     tags: true
