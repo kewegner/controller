@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"regexp"
 	"strconv"
 	"strings"
@@ -308,7 +309,7 @@ func setupEnvironmentVars() error {
 	return err
 }
 
-func killProcess(theProcessType ProcessType) error {
+func killProcess(theProcessType ProcessType, checkAttempts int) error {
 	var processPid int
 	var err error
 	if theProcessType == server {
@@ -319,10 +320,23 @@ func killProcess(theProcessType ProcessType) error {
 	ControllerDebug.log("Attempting to kill pid: ", processPid)
 
 	if processPid != 0 {
+		if cmps.processes[theProcessType].Signal(syscall.Signal(0)) != nil {
+			ControllerDebug.log("No such process for pid:  ", processPid)
+			err = nil
+		} else {
 
-		ControllerDebug.log("Killing pid:  ", processPid)
-		err = syscall.Kill(-processPid, syscall.SIGINT)
+			ControllerDebug.log("Killing pid:  ", processPid)
+			err = syscall.Kill(-processPid, syscall.SIGINT)
 
+			for i := 0; i < checkAttempts; i++ {
+				ControllerDebug.log("Process check ", theProcessType, i)
+				if cmps.processes[theProcessType].Signal(syscall.Signal(0)) != nil {
+					break //process is dead
+				} else {
+					time.Sleep(3 * time.Second)
+				}
+			}
+		}
 		cmps.processes[theProcessType] = nil
 		cmps.pids[theProcessType] = 0
 		if err != nil {
@@ -526,7 +540,7 @@ func runCommands(commandString string, theProcessType ProcessType, killServer bo
 		// This is a watcher
 		if killServer {
 			ControllerDebug.log("APPSODY_RUN/DEBUG/TEST_ON_KILL is true, attempting to kill the corresponding process.")
-			err = killProcess(server)
+			err = killProcess(server, 0)
 			if err != nil {
 				// do nothing we continue after kill errors
 				ControllerWarning.log("The attempt to kill the process received an error ", err)
@@ -534,11 +548,12 @@ func runCommands(commandString string, theProcessType ProcessType, killServer bo
 		}
 		ControllerDebug.log("Killing the APPSODY_RUN/DEBUG/TEST_ON_CHANGE process.")
 
-		err = killProcess(fileWatcher)
+		err = killProcess(fileWatcher, 0)
 		if err != nil {
 			// do nothing we continue after kill errors
 			ControllerWarning.log("Killing the the APPSODY_RUN/DEBUG/TEST_ON_CHANGE process received error ", err)
 		}
+		go reapChildProcesses()
 
 		commandToUse := commandString
 		processTypeToUse := fileWatcher
@@ -695,6 +710,32 @@ func main() {
 
 		go runCommands(startCommand, server, false, false)
 	}
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-c
+		cmps.mu.Lock()
+		defer cmps.mu.Unlock()
+		ControllerInfo.log("Inside signal handler for controller")
+		ControllerInfo.log("Killing the ON_CHANGE process")
+		err := killProcess(fileWatcher, 5)
+		if err != nil {
+			ControllerError.log("Received error during signal handler killing ON_CHANGE process", err)
+		}
+		ControllerInfo.log("Killing the server process")
+		err = killProcess(server, 5)
+		if err != nil {
+			ControllerError.log("Received error during signal handler killing the RUN/TEST/DEBUG process", err)
+		}
+		go reapChildProcesses() //run separately to make sure that we don't block
+		if err != nil {
+			ControllerError.log("Received error during signal handler reapChildProcesses", err)
+		}
+
+		ControllerInfo.log("Done processing controller signal handler.")
+	}()
+
 	if fileChangeCommand != "" && !disableWatcher {
 
 		err = runWatcher(fileChangeCommand, dirs, stopWatchServerOnChange)
@@ -708,4 +749,38 @@ func main() {
 		os.Exit(1)
 	}
 
+}
+
+func reapChildProcesses() error {
+	maxLimit := 0
+	for {
+
+		var wstatus syscall.WaitStatus
+		//WNOHANG means return if there are no child processes to wait for
+		pid, err := syscall.Wait4(-1, &wstatus, syscall.WNOHANG, nil)
+		ControllerInfo.log("Reaper pid/err is: ", pid, err)
+		if pid == 0 && maxLimit < 10 && err == nil {
+			ControllerInfo.log("Reaper sleeping 2 seconds: ", pid)
+			time.Sleep(2 * time.Second)
+			maxLimit += 1
+		}
+
+		if syscall.EINTR == err {
+			ControllerInfo.log("Signal Interupt: ", err)
+			break
+		}
+		if syscall.ECHILD == err {
+			ControllerInfo.log("No more child processes: ", err)
+			break
+		}
+
+		ControllerInfo.log("Max limit count: ", maxLimit)
+
+		if maxLimit >= 10 {
+			ControllerInfo.log("Max limit reached: ", maxLimit)
+			break
+		}
+
+	}
+	return nil
 }
